@@ -1,6 +1,6 @@
-###### XGBOOST ########
+### XGBOOST ###
 
-# ANALIZA WRAŻLIWOŚCI XGBOOST #
+# IMPACT OF OIL PRICES ON EXCHANGE RATES #
 
 import pandas as pd
 import xgboost as xgb
@@ -10,11 +10,11 @@ import matplotlib
 
 matplotlib.use('Agg')
 
-# Konfiguracja ścieżek i parametrów
+# Paths and parameters
 INPUT_FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_SENSITIVITY_EXCEL_PATH = r"XGBOOST\xgb_sensitivity.xlsx"
 
-# Parametry analizy
+# Analysis parameters
 LAGS_BRENT = [1, 2, 3]
 CURRENCIES = ["USD/EUR", "USD/CAD", "USD/NOK", "USD/RUB"]
 LAGS_CURRENCY = [1, 2, 3]
@@ -23,18 +23,18 @@ N_SPLITS_TIMESERIES = 5
 N_ESTIMATORS_XGB = 100
 RANDOM_STATE_XGB = 42
 
-# Wczytanie i przygotowanie danych
+# Data load and preparation
 df = pd.read_excel(INPUT_FILE_PATH)
 df.columns = df.columns.str.strip()
 df["Date"] = pd.to_datetime(df["Date"])
 df.set_index("Date", inplace=True)
 df = df.asfreq("D")
 
-# Tworzenie kolumn z lagami dla cen ropy
+# Adding columns with Brent lags
 for lag in LAGS_BRENT:
     df[f"BRENT_lag{lag}"] = df["BRENT"].shift(lag)
 
-#  Główna pętla analizy wrażliwości
+# Loop of sensitivity analysis
 results_xgb_sensitivity = []
 
 for waluta in CURRENCIES:
@@ -46,7 +46,6 @@ for waluta in CURRENCIES:
         for lag_waluta in LAGS_CURRENCY:
             df_model_xgb[f"{waluta}_lag{lag_waluta}"] = df_model_xgb[waluta].shift(lag_waluta)
 
-        # W tym miejscu wszystkie wiersze z NaN (z weekendów lub z lagowania) zostaną usunięte
         df_model_xgb.dropna(inplace=True)
 
         y_xgb = df_model_xgb[waluta]
@@ -100,11 +99,12 @@ for waluta in CURRENCIES:
             f"Std Sensitivity (BRENT -{BRENT_PERTURBATION_PERCENT * 100}%)": std_sens_minus,
         })
 
+# Saving results to Excel
 pd.DataFrame(results_xgb_sensitivity).to_excel(OUTPUT_SENSITIVITY_EXCEL_PATH, index=False)
-print(f"\nAnaliza wrażliwości XGBoost zakończona. Wyniki zapisano w: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
+print(f"\nXGBoost analysis finished. Results saved: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
 
 
-# PROGNOZA KURSÓW WALUT #
+# FORECASTING #
 
 import pandas as pd
 import xgboost as xgb
@@ -118,12 +118,12 @@ from statsmodels.tsa.stattools import acf
 
 matplotlib.use('Agg')
 
-# Konfiguracja ścieżek i parametrów
+# Paths and parameters
 INPUT_FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_CHARTS_DIR = r"XGBOOST\charts"
 OUTPUT_RESULTS_EXCEL_PATH = r"XGBOOST\xgb_results.xlsx"
 
-# Parametry modelu i analizy
+# Analysis parameters
 CURRENCIES = ["USD/EUR", "USD/CAD", "USD/NOK", "USD/RUB"]
 LAGS_BRENT = [1, 2, 3]
 LAGS_CURRENCY = [1, 2, 3]
@@ -135,14 +135,14 @@ RANDOM_STATE_XGB = 42
 os.makedirs(OUTPUT_CHARTS_DIR, exist_ok=True)
 plt.style.use('seaborn-v0_8-whitegrid')
 
-# Wczytanie i przygotowanie danych
+# Data load and preparation
 df = pd.read_excel(INPUT_FILE_PATH)
 df.columns = df.columns.str.strip()
 df["Date"] = pd.to_datetime(df["Date"])
 df.set_index("Date", inplace=True)
 df = df.asfreq("D")
 
-# Tworzenie wszystkich cech opóźnionych
+# Creation of delayed features
 df_features = df.copy()
 for lag in LAGS_BRENT:
     df_features[f"BRENT_lag{lag}"] = df_features["BRENT"].shift(lag)
@@ -151,7 +151,7 @@ for waluta_col in CURRENCIES:
         df_features[f"{waluta_col.replace('/', '_')}_lag{lag_w}"] = df_features[waluta_col].shift(lag_w)
 df_features.dropna(inplace=True)
 
-# Funkcja do obliczania metryk
+# Metrics calculation
 def calculate_metrics(y_true, y_pred):
     return {
         'MSE': mean_squared_error(y_true, y_pred),
@@ -159,7 +159,7 @@ def calculate_metrics(y_true, y_pred):
         'R-kwadrat': r2_score(y_true, y_pred)
     }
 
-# Główna pętla prognozowania
+# Forecasting loop
 results_xgb = []
 
 for waluta_target in CURRENCIES:
@@ -209,7 +209,7 @@ for waluta_target in CURRENCIES:
             **mean_metrics, "Średnia ważność cech": avg_importance
         })
 
-        # Wizualizacja predykcji poziomu
+        # Generating charts
         predictions_to_plot = all_predictions_for_currency_lag[all_predictions_for_currency_lag.index >= START_PLOT_DATE].dropna()
         real_to_plot = y[y.index >= START_PLOT_DATE].reindex(predictions_to_plot.index).dropna()
 
@@ -230,7 +230,7 @@ for waluta_target in CURRENCIES:
             plt.savefig(os.path.join(OUTPUT_CHARTS_DIR, chart_filename))
             plt.close()
 
-            # --- Analiza autokorelacji reszt ---
+            # Autocorrelation analysis of the residuals
             residuals = real_to_plot - predictions_to_plot
             if not residuals.dropna().empty:
                 acf_values = acf(residuals.dropna(), nlags=20, fft=True)
@@ -244,8 +244,8 @@ for waluta_target in CURRENCIES:
                 plt.savefig(os.path.join(OUTPUT_CHARTS_DIR, acf_filename))
                 plt.close()
 
-# Zapis wyników do Excela
+# Saving results to Excel
 pd.DataFrame(results_xgb).to_excel(OUTPUT_RESULTS_EXCEL_PATH, index=False)
 
-print(f"Analiza XGBoost z opóźnieniami FX zakończona. Wyniki zapisano w: {OUTPUT_RESULTS_EXCEL_PATH}")
-print(f"Wykresy i analizy autokorelacji zapisano w: {OUTPUT_CHARTS_DIR}")
+print(f"XGBoost forecasting finished. Results saved: {OUTPUT_RESULTS_EXCEL_PATH}")
+print(f"Charts and results saved: {OUTPUT_CHARTS_DIR}")

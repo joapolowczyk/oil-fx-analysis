@@ -1,6 +1,6 @@
-###### LSTM #####
+### LSTM ###
 
-# ANALIZA WRAŻLIWOŚCI LSTM #
+# IMPACT OF OIL PRICES ON EXCHANGE RATES #
 
 import pandas as pd
 import numpy as np
@@ -11,10 +11,10 @@ from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.callbacks import EarlyStopping
 import warnings
 
-# Ignoruj ostrzeżenia z TensorFlow
+# TensorFlow errors ignore
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Konfiguracja parametrów
+# Paths and parameters
 INPUT_FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_SENSITIVITY_EXCEL_PATH = r"LSTM\lstm_sensitivity.xlsx"
 
@@ -25,13 +25,13 @@ LOOK_BACK = 5
 BRENT_PERTURBATION_PERCENT = 0.01
 N_SPLITS_TIMESERIES = 5
 
-# Parametry modelu LSTM
+# LSTM parameters
 LSTM_UNITS = 50
 LSTM_EPOCHS = 50
 LSTM_BATCH_SIZE = 32
 EARLY_STOPPING_PATIENCE = 3
 
-# KROK 1: Przygotowanie danych
+# Data load and preparation
 df_raw = pd.read_excel(INPUT_FILE_PATH)
 df_raw.columns = df_raw.columns.str.strip()
 df_raw["Date"] = pd.to_datetime(df_raw["Date"])
@@ -54,7 +54,7 @@ def create_sequences(X, y, look_back):
     return np.array(Xs), np.array(ys)
 
 
-# Funkcja do budowy i kompilacji modelu LSTM
+# Function to build and compile the LSTM model
 def build_lstm_model(input_shape):
     model = Sequential([
         LSTM(LSTM_UNITS, activation='tanh', input_shape=input_shape),
@@ -64,7 +64,7 @@ def build_lstm_model(input_shape):
     return model
 
 
-# Główna pętla analizy wrażliwości LSTM
+# Loop of sensitivity analysis
 results_lstm_sensitivity = {}
 
 for waluta in CURRENCIES:
@@ -147,6 +147,7 @@ for waluta in CURRENCIES:
             f"Std Sensitivity (BRENT -{BRENT_PERTURBATION_PERCENT * 100}%)": std_sens_minus,
         }
 
+# Saving results to Excel
 with pd.ExcelWriter(OUTPUT_SENSITIVITY_EXCEL_PATH) as writer:
     for waluta, lag_results in results_lstm_sensitivity.items():
         df_sensitivity = pd.DataFrame.from_dict(lag_results, orient='index')
@@ -154,9 +155,9 @@ with pd.ExcelWriter(OUTPUT_SENSITIVITY_EXCEL_PATH) as writer:
         sheet_name = f'Sensitivity_{waluta.replace("/", "_")}'
         df_sensitivity.to_excel(writer, sheet_name=sheet_name)
 
-print(f"\nAnaliza wrażliwości LSTM zakończona. Wyniki zapisano w: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
+print(f"\nAnalizys LSTM finished. Resultes saved:: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
 
-# PROGNOZA KURSÓW WALUT LSTM #
+# FORECASTING #
 
 import pandas as pd
 import numpy as np
@@ -173,7 +174,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 import random
 
-# ustawienie ziarna losowości w celu powtarzalności wyników
+# Setting a seed of randomness for repeatability of results
 SEED = 22
 os.environ['PYTHONHASHSEED'] = str(SEED)
 random.seed(SEED)
@@ -184,7 +185,7 @@ tf.random.set_seed(SEED)
 warnings.filterwarnings("ignore", category=UserWarning)
 matplotlib.use('Agg')
 
-# Konfiguracja parametrów
+# Paths and parameters
 FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_CHARTS_PATH = r"LSTM\charts"
 OUTPUT_RESULTS_EXCEL_PATH = r"LSTM\wyniki_lstm.xlsx"
@@ -200,7 +201,7 @@ START_PLOT_DATE = '2018-01-01'
 VALIDATION_SET_SIZE = 0.1  # 10% danych treningowych na zbiór walidacyjny
 EARLY_STOPPING_PATIENCE = 5
 
-# Przygotowanie danych
+# Data load and preparation
 df = pd.read_excel(FILE_PATH)
 df['Date'] = pd.to_datetime(df['Date'])
 df = df.set_index('Date')
@@ -231,7 +232,7 @@ def build_lstm_model(input_shape):
     model.compile(optimizer='adam', loss='mse')
     return model
 
-
+# Forecasting loop
 results_lstm_metrics = []
 os.makedirs(OUTPUT_CHARTS_PATH, exist_ok=True)
 plt.style.use('seaborn-v0_8-whitegrid')
@@ -283,10 +284,10 @@ for currency_org in CURRENCIES:
                       verbose=0,
                       callbacks=[early_stopping])
 
-            # Predykcja na zbiorze testowym
+            # Prediction on a test set
             y_pred_test_scaled = model.predict(X_test_seq, verbose=0)
 
-            # Odwrócenie skalowania
+            # Inverse scaling
             y_pred_test_original = scaler_y.inverse_transform(y_pred_test_scaled)
             y_test_original = scaler_y.inverse_transform(y_test_seq)
 
@@ -313,6 +314,7 @@ for currency_org in CURRENCIES:
         predictions_to_plot = all_predictions_agg[all_predictions_agg.index >= START_PLOT_DATE].dropna()
         real_to_plot = df[currency_org].loc[predictions_to_plot.index]
 
+        # Generating charts
         if not predictions_to_plot.empty:
             plt.figure(figsize=(15, 7))
             plt.plot(real_to_plot.index, real_to_plot, label=f'Rzeczywiste {currency_org}')
@@ -327,8 +329,9 @@ for currency_org in CURRENCIES:
             plt.savefig(filename)
             plt.close()
 
+# Saving results to Excel
 results_df_lstm = pd.DataFrame(results_lstm_metrics)
 results_df_lstm.to_excel(OUTPUT_RESULTS_EXCEL_PATH, index=False)
 
-print(f"\nWyniki oceny LSTM zostały zapisane do: {OUTPUT_RESULTS_EXCEL_PATH}")
-print(f"Wykresy zostały zapisane w: {OUTPUT_CHARTS_PATH}")
+print(f"\nLSTM forecasting finished. Results saved: {OUTPUT_RESULTS_EXCEL_PATH}")
+print(f"Charts saved: {OUTPUT_CHARTS_PATH}")

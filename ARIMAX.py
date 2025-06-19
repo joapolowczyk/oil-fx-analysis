@@ -1,26 +1,26 @@
 ### ARIMAX ####
 
-#ANALIZA WPŁYWU CEN ROPY NA KURSY WALUT #
+# IMPACT OF OIL PRICES ON EXCHANGE RATES #
 
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 
-# Wczytanie i przygotowanie danych
+# Data load and preparation
 df = pd.read_excel("Brent_fxrates.xlsx")
 df.columns = df.columns.str.strip()
 df["Date"] = pd.to_datetime(df["Date"])
 df.set_index("Date", inplace=True)
-df = df.asfreq("D").interpolate() #interpolacja w celu usunięciu brakujących wartości
+df = df.asfreq("D").interpolate() #interpolation in order to fill blanks
 
-# Dodanie kolumn z lagami Brent
+# Adding columns with Brent lags
 for lag in [1, 2, 3]:
     df[f"BRENT_lag{lag}"] = df["BRENT"].shift(lag)
 
 waluty = ["USD/EUR", "USD/CAD", "USD/NOK", "USD/RUB"]
 results = []
-d = 1  # Stałe d, różnicowanie pierwszego stopnia, sprawdzone przy badaniach stacjonarności ADF
+d = 1  # Fixed d after ADF test
 
-# Testowanie modeli ARIMA dla każdej waluty i laga
+# Testing ARIMA for each currency and lag
 for waluta in waluty:
     for lag in [1, 2, 3]:
         df_model = df[[waluta, f"BRENT_lag{lag}"]].dropna()
@@ -38,16 +38,16 @@ for waluta in waluty:
                     "AIC": model_fit.aic
                 })
 
-# Analiza i zapis wyników
+# Analizys and data save
 results_df = pd.DataFrame(results)
 results_df.to_excel(r"ARIMAX\arimax_test.xlsx", index=False)
 
 best_models = results_df.loc[results_df.groupby(['Waluta', 'Lag'])['AIC'].idxmin()]
 best_models.to_excel(r"ARIMAX\najlepsze_modele_aic.xlsx", index=False)
 
-print("Analiza zakończona. Wyniki zostały zapisane do plików Excel.")
+print("Analysis complete. The results have been saved to Excel file")
 
-#PROGNOZA KURSÓW WALUT#
+# FORECASTING #
 
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
@@ -56,7 +56,7 @@ from math import sqrt
 import matplotlib.pyplot as plt
 import os
 
-# Funkcja do oceny prognozy
+# Function to evaluate the forecast
 def evaluate_forecast(y_true, y_predicted):
     return {
         "MSE": mean_squared_error(y_true, y_predicted),
@@ -65,27 +65,27 @@ def evaluate_forecast(y_true, y_predicted):
         "R-kwadrat": r2_score(y_true, y_predicted)
     }
 
-# Wczytanie i przygotowanie danych
+# Data load and preparation
 df = pd.read_excel("Brent_fxrates.xlsx")
 df.columns = df.columns.str.strip()
 df["Date"] = pd.to_datetime(df["Date"])
 df.set_index("Date", inplace=True)
 df = df.asfreq("D").interpolate()
 
-# Generowanie kolumn z opóźnieniami BRENT
+# Generating columns with Brent lags
 for lag in [1, 2, 3]:
     df[f"BRENT_lag{lag}"] = df["BRENT"].shift(lag)
 
-# Wczytanie najlepszych rzędów ARIMAX
+# Loading best ARIMAX models
 best_arima_orders_df = pd.read_excel(r"ARIMAX\najlepsze_modele_aic.xlsx")
 
-# Ustawienie stylu wykresów
+# Charts style
 plt.style.use('seaborn-v0_8-whitegrid')
 
 results_prediction = []
-output_charts_path_arimax = r"ARIMAX\charts" # Ścieżka do katalogu wykresów
+output_charts_path_arimax = r"ARIMAX\charts" #Path to chart directory
 
-# Pętla przez najlepsze modele i generowanie prognoz
+# Loop through the best models and forecasts
 for index, row in best_arima_orders_df.iterrows():
     waluta = row['Waluta']
     lag = int(row['Lag'])
@@ -93,17 +93,17 @@ for index, row in best_arima_orders_df.iterrows():
     brent_lag_col = f"BRENT_lag{lag}"
 
     df_model = df[[waluta, brent_lag_col]].dropna()
-    train_data = df_model[:'2017-12-31'] #dane treningowe
-    test_data = df_model['2018-01-01':] #dane testowe
+    train_data = df_model[:'2017-12-31'] #training data
+    test_data = df_model['2018-01-01':] #test data
 
     y_train, X_train = train_data[waluta], train_data[[brent_lag_col]]
     y_test, X_test = test_data[waluta], test_data[[brent_lag_col]]
 
-    # Modelowanie i predykcja
+    # Modeling and prediction
     model_fit = ARIMA(y_train, exog=X_train, order=order).fit()
     predictions = model_fit.predict(start=y_test.index[0], end=y_test.index[-1], exog=X_test)
 
-    # Ocena prognozy
+    # Evaluating forcast
     metrics = evaluate_forecast(y_test, predictions)
     results_prediction.append({
         "Waluta": waluta,
@@ -112,7 +112,7 @@ for index, row in best_arima_orders_df.iterrows():
         **metrics
     })
 
-    # Generowanie i zapis wykresu
+    # Generating charts
     plt.figure(figsize=(12, 6))
     plt.plot(y_test.index, y_test, label=f'Rzeczywiste {waluta}')
     plt.plot(predictions.index, predictions, label=f'Prognozy ARIMAX (Lag={lag})', color='orange')
@@ -126,8 +126,8 @@ for index, row in best_arima_orders_df.iterrows():
     plt.savefig(filename)
     plt.close()
 
-# Zapisanie wyników oceny do Excela
+# Data save
 results_df_prediction = pd.DataFrame(results_prediction)
 results_df_prediction.to_excel(r"ARIMAX\arimax_prediction_evaluation.xlsx", index=False)
 
-print("Proces prognozowania zakończony. Wykresy i wyniki zostały zapisane do plików.")
+print("Forecasting finished. Charts and results have been saved")

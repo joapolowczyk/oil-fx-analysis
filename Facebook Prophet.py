@@ -1,6 +1,6 @@
-########## FACEBOOK PROPHET #########
+### FACEBOOK PROPHET ###
 
-# ANALIZA WRAŻLIWOŚCI CEN ROPY NA KURSY WALUT #
+# IMPACT OF OIL PRICES ON EXCHANGE RATES #
 
 import pandas as pd
 import numpy as np
@@ -8,10 +8,10 @@ from prophet import Prophet
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
 
-# Ignoruj przyszłe ostrzeżenia z Prophet
+# errors ignore
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Konfiguracja parametrów
+# Paths and parameters
 FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_SENSITIVITY_EXCEL_PATH = r"FP\prophet_sensitivity.xlsx"
 
@@ -21,8 +21,7 @@ LAGS_CURRENCY = [1, 2, 3]
 BRENT_PERTURBATION_PERCENT = 0.01
 N_SPLITS_TIMESERIES = 5
 
-#KROK 1: Przygotowanie danych
-
+#Data load and preparation
 df_raw = pd.read_excel(FILE_PATH)
 df_raw.columns = df_raw.columns.str.strip()
 df_raw["Date"] = pd.to_datetime(df_raw["Date"])
@@ -32,7 +31,7 @@ df_raw = df_raw.asfreq("D")
 for lag in LAGS_BRENT:
     df_raw[f'brent_lag_{lag}'] = df_raw['BRENT'].shift(lag)
 
-# Główna pętla analizy wrażliwości
+# Loop of sensitivity analysis
 results_prophet_sensitivity = {}
 
 for waluta in CURRENCIES:
@@ -104,7 +103,7 @@ for waluta in CURRENCIES:
             f"Std Sensitivity (BRENT -{BRENT_PERTURBATION_PERCENT * 100}%)": std_sens_minus,
         }
 
-# Zapis wyników do Excela
+# Saving results to Excel
 with pd.ExcelWriter(OUTPUT_SENSITIVITY_EXCEL_PATH) as writer:
     for waluta, lag_results in results_prophet_sensitivity.items():
         df_to_save = pd.DataFrame.from_dict(lag_results, orient='index')
@@ -112,10 +111,10 @@ with pd.ExcelWriter(OUTPUT_SENSITIVITY_EXCEL_PATH) as writer:
         sheet_name = f'Sensitivity_{waluta.replace("/", "_")}'
         df_to_save.to_excel(writer, sheet_name=sheet_name)
 
-print(f"\nAnaliza wrażliwości zakończona. Wyniki zapisano w: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
+print(f"\nFacebook Prophet analizys finished. Resultes saved: {OUTPUT_SENSITIVITY_EXCEL_PATH}")
 
 
-# PROGNOZA KURSÓW WALUT #
+# FORECASTING #
 
 import pandas as pd
 import numpy as np
@@ -128,7 +127,7 @@ import matplotlib
 
 matplotlib.use('Agg')
 
-# Konfiguracja parametrów
+# Paths and parameters
 FILE_PATH = "Brent_fxrates.xlsx"
 OUTPUT_CHARTS_PATH = r"FP\charts"
 OUTPUT_RESULTS_EXCEL_PATH = r"FP\prophet_evaluation_metrics.xlsx"
@@ -139,34 +138,29 @@ LAGS_CURRENCY = [1, 2, 3]
 N_SPLITS_TIMESERIES = 5
 START_PLOT_DATE = '2018-01-01'
 
-# Przygotowanie danych (globalne)
+# Data load and preparation
 df = pd.read_excel(FILE_PATH)
 df['Date'] = pd.to_datetime(df['Date'])
 df = df.set_index('Date')
 df.columns = df.columns.str.strip()
 df = df.asfreq("D")
 
-# Dodaj kolumny z lagami BRENT globalnie
+# Adding lags
 for lag in LAGS_BRENT:
     df[f'BRENT_lag_{lag}'] = df['BRENT'].shift(lag)
 
-# Dodaj kolumny z lagami walut globalnie
 for currency_col in CURRENCIES:
     for lag_w in LAGS_CURRENCY:
         safe_col_name = currency_col.replace('/', '_')
         df[f'{safe_col_name}_lag_{lag_w}'] = df[currency_col].shift(lag_w)
 
 
-# Funkcje pomocnicze
+# Support functions
 def get_prophet_df(base_df, target_currency, brent_lag_val, currency_lags_list):
-    """
-    Przygotowuje DataFrame w formacie wymagany przez Prophet (ds, y)
-    oraz dodaje wybrane regresory.
-    """
+
     regressors = [f'BRENT_lag_{brent_lag_val}'] + \
                  [f'{target_currency.replace("/", "_")}_lag_{lw}' for lw in currency_lags_list]
 
-    # Upewnij się, że wszystkie kolumny potrzebne są w df_temp
     cols_to_select = [target_currency] + regressors
     df_temp = base_df[cols_to_select].dropna().reset_index()
     df_temp.rename(columns={'Date': 'ds', target_currency: 'y'}, inplace=True)
@@ -174,7 +168,6 @@ def get_prophet_df(base_df, target_currency, brent_lag_val, currency_lags_list):
 
 
 def train_and_predict_prophet(train_df, test_df, regressors):
-    """Trenuje model Prophet i dokonuje predykcji."""
     model = Prophet()
     for reg in regressors:
         model.add_regressor(reg)
@@ -184,7 +177,6 @@ def train_and_predict_prophet(train_df, test_df, regressors):
 
 
 def calculate_metrics(y_true, y_pred):
-    """Oblicza MSE, MAE i R-kwadrat."""
     return {
         'MSE': mean_squared_error(y_true, y_pred),
         'MAE': mean_absolute_error(y_true, y_pred),
@@ -192,16 +184,13 @@ def calculate_metrics(y_true, y_pred):
     }
 
 
-# Główna pętla oceny modelu
+# Forecasting loop
 results_prophet_metrics = []
 os.makedirs(OUTPUT_CHARTS_PATH, exist_ok=True)
 plt.style.use('seaborn-v0_8-whitegrid')
 
-print("\nRozpoczynanie oceny modelu Prophet z TimeSeriesSplit...")
-
 for target_currency in CURRENCIES:
     for brent_lag_val in LAGS_BRENT:
-        # Przygotuj dane dla bieżącej waluty i laga BRENT
         df_prophet_ready, current_regressors = get_prophet_df(df, target_currency, brent_lag_val, LAGS_CURRENCY)
 
         if df_prophet_ready.empty:
@@ -225,18 +214,17 @@ for target_currency in CURRENCIES:
                 print(f"  Pusty fold treningowy/testowy ({fold_idx + 1}/{N_SPLITS_TIMESERIES}) dla {target_currency}, lag {brent_lag_val}. Pomijam.")
                 continue
 
-            # Trening i predykcja
+            # Training and prediction
             forecast_fold = train_and_predict_prophet(train_fold, test_fold, current_regressors)
 
-            # Ocena metryk
+            # Evaluation of metrics
             metrics = calculate_metrics(test_fold['y'], forecast_fold['yhat'])
             fold_results.append(metrics)
 
-            # Agregacja prognoz
-
+            # Aggregation of forecasts
             all_predictions.loc[forecast_fold['ds']] = forecast_fold['yhat'].values
 
-        # Średnie wyniki z walidacji krzyżowej
+        # Average results
         if not fold_results:
             mean_mse, mean_mae, mean_r2 = np.nan, np.nan, np.nan
         else:
@@ -253,9 +241,8 @@ for target_currency in CURRENCIES:
             "Mean R-kwadrat": mean_r2
         })
 
-        # Wizualizacja prognoz
+        # Generating charts
         predictions_to_plot = all_predictions[all_predictions.index >= pd.to_datetime(START_PLOT_DATE)].dropna()
-        # Musimy pobrać rzeczywiste wartości z oryginalnego df_prophet_ready dla dopasowanych dat
         real_to_plot = df_prophet_ready.set_index('ds')['y'].loc[predictions_to_plot.index].dropna()
 
         # Ensure common index for plotting
@@ -278,9 +265,9 @@ for target_currency in CURRENCIES:
             plt.savefig(filename)
             plt.close()
 
-# Zapis wyników do Excela
+# Saving results to Excel
 results_df_prophet = pd.DataFrame(results_prophet_metrics)
 results_df_prophet.to_excel(OUTPUT_RESULTS_EXCEL_PATH, index=False)
 
-print(f"\nOcena modelu Prophet zakończona. Wyniki zapisano w: {OUTPUT_RESULTS_EXCEL_PATH}")
-print(f"Wykresy zapisano w: {OUTPUT_CHARTS_PATH}")
+print(f"\nFacebook Prophet forecasting finished. Results saved: {OUTPUT_RESULTS_EXCEL_PATH}")
+print(f"Charts saved: {OUTPUT_CHARTS_PATH}")

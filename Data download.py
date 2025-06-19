@@ -1,5 +1,5 @@
 
-###ŚCIĄGANIE DANYCH ROPY BRENT###
+### BRENT DOWNLOAD ###
 
 import pandas as pd
 import urllib.request
@@ -12,16 +12,16 @@ load_dotenv()
 API_KEY = os.getenv('API_KEY')
 
 if not API_KEY:
-    raise ValueError("Nie znaleziono klucza API. Upewnij się, że masz plik .env z wpisanym API_KEY.")
+    raise ValueError("API key not found. Make sure you have file .env with API_KEY")
 
-#URL z parametrami dla ropy Brent
+#URL with Brent parameters
 BASE_URL = (
     "https://api.eia.gov/v2/petroleum/pri/spt/data/"
     "?frequency=daily"
     "&data[0]=value"
-    "&facets[product][]=EPCBRENT"  #Produkt EPCBRENT (Brent)
-    "&start=2010-01-01"  #Start danych
-    "&end=2019-12-31"    #Koniec danych
+    "&facets[product][]=EPCBRENT"  #Product EPCBRENT (Brent)
+    "&start=2010-01-01"  #Data start
+    "&end=2019-12-31"    #Data end
     "&sort[0][column]=period"
     "&sort[0][direction]=desc"
 )
@@ -40,20 +40,20 @@ while True:
 
     records = result["response"]["data"]
     if not records:
-        break  #Jeśli pusta lista – koniec danych
+        break  #If empty end
 
     all_data.extend(records)
     offset += limit
-    print(f"Pobrano: {len(all_data)} rekordów...")
+    print(f"Downloaded: {len(all_data)} records...")
 
-#Konwersja do DataFrame
+#Conversion to DataFrame
 OIL = pd.DataFrame(all_data)
 OIL["period"] = pd.to_datetime(OIL["period"])
 OIL = OIL.sort_values("period")
 
 print(OIL)
 
-###ŚCIĄGANIE DANYCH FX RATES###
+### FX RATES DOWNLOAD ###
 
 import yfinance as yf
 
@@ -65,7 +65,7 @@ eur = all_data.xs('USDEUR=X', level=1, axis=1).reset_index()
 nok = all_data.xs('USDNOK=X', level=1, axis=1).reset_index()
 rub = all_data.xs('USDRUB=X', level=1, axis=1).reset_index()
 
-###ZMIANA DANYCH###
+### DATA CHANGE ###
 
 eur = eur[['Date', 'Close']].rename(columns={'Close':'USD/EUR'})
 cad = cad[['Date', 'Close']].rename(columns={'Close':'USD/CAD'})
@@ -86,21 +86,21 @@ df['Date'] = pd.to_datetime(df['period'])
 
 df_grouped = df[['Date', 'value']].rename(columns={'value': 'BRENT'})
 
-##### Połączenie danych #####
+### Data merge ###
 
 brent_prices = df_grouped
 fxrates = merged
 
 both = brent_prices.merge(fxrates, on='Date')
 
-#Konwersja kolumny 'Date' na typ datetime
+#Coversion to datetime type
 both['Date'] = pd.to_datetime(both['Date'])
 
-#Konwersja pozostałych kolumn na typ float
+#Conversion to float type
 for col in ['BRENT', 'USD/EUR', 'USD/CAD', 'USD/NOK', 'USD/RUB']:
     both[col] = pd.to_numeric(both[col], errors='coerce')
 
 both[['USD/EUR', 'USD/CAD', 'USD/NOK', 'USD/RUB']] = both[['USD/EUR', 'USD/CAD', 'USD/NOK', 'USD/RUB']].round(4)
 
-#Zapis do pliku Excel
+#Excel save
 both.to_excel("Brent_fxrates.xlsx", index=False)
